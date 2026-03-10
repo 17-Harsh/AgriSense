@@ -83,7 +83,22 @@ def get_data_transforms():
 def build_model(num_classes, device):
     """Build EfficientNet-B0 with custom classification head."""
 
-    model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+    try:
+        model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        print('[AgriSense] Loaded EfficientNet-B0 with ImageNet weights')
+    except RuntimeError:
+        print('[AgriSense] Hash mismatch on cached model, retrying...')
+        import glob
+        import torch.hub
+        cache_dir = torch.hub.get_dir()
+        for f in glob.glob(os.path.join(cache_dir, 'checkpoints', 'efficientnet_b0*')):
+            os.remove(f)
+        try:
+            model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+            print('[AgriSense] Loaded EfficientNet-B0 with ImageNet weights (retry)')
+        except Exception:
+            print('[AgriSense] Using model without pretrained weights')
+            model = models.efficientnet_b0(weights=None)
 
     # Freeze early feature layers
     for param in model.features[:6].parameters():
