@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Diagnosis History — AgriSense{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1 class="page-header__title">Diagnosis History</h1>
+    <p class="page-header__desc">All previous crop analyses performed through the system</p>
+</section>
+
+<section class="history-section" id="history-section">
+    {% if records.items %}
+    <div class="history-grid">
+        {% for record in records.items %}
+        <div class="history-card" id="history-card-{{ record.id }}">
+            <div class="history-card__img-wrap">
+                <img src="{{ url_for('static', filename='uploads/' + record.image_filename) }}"
+                    alt="{{ record.crop }} - {{ record.disease }}" class="history-card__img" loading="lazy">
+                <span
+                    class="history-card__status {% if record.is_healthy %}history-card__status--healthy{% else %}history-card__status--diseased{% endif %}">
+                    {{ 'Healthy' if record.is_healthy else record.severity }}
+                </span>
+            </div>
+            <div class="history-card__body">
+                <span class="history-card__crop">{{ record.crop }}</span>
+                <strong class="history-card__disease">{{ record.disease }}</strong>
+                <div class="history-card__meta">
+                    <div class="history-card__conf-wrap">
+                        <div class="history-card__conf-bar">
+                            <div class="history-card__conf-fill" style="width: {{ record.confidence * 100 }}%"></div>
+                        </div>
+                        <span class="history-card__conf-text">{{ "%.1f"|format(record.confidence * 100) }}%</span>
+                    </div>
+                    <time class="history-card__date" datetime="{{ record.created_at.isoformat() }}">
+                        {{ record.created_at.strftime('%d %b %Y, %I:%M %p') }}
+                    </time>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if records.pages > 1 %}
+    <nav class="pagination" id="pagination" aria-label="History pages">
+        {% if records.has_prev %}
+        <a href="{{ url_for('history', page=records.prev_num) }}" class="pagination__link" id="prev-page">← Previous</a>
+        {% endif %}
+        <span class="pagination__info">Page {{ records.page }} of {{ records.pages }}</span>
+        {% if records.has_next %}
+        <a href="{{ url_for('history', page=records.next_num) }}" class="pagination__link" id="next-page">Next →</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-state" id="empty-state">
+        <div class="empty-state__icon">📋</div>
+        <h3 class="empty-state__title">No diagnoses yet</h3>
+        <p class="empty-state__desc">Upload your first crop leaf image to get started!</p>
+        <a href="{{ url_for('diagnose') }}" class="btn btn--primary" id="empty-diagnose-btn">Start First Diagnosis</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

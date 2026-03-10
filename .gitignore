@@ -1,0 +1,34 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Model weights (too large for GitHub)
+models/*.pth
+models/*.pt
+
+# Database
+*.db
+
+# Uploaded images
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Evaluation outputs
+models/confusion_matrix.npy
+models/evaluation_results.json
+models/training_history.json
+
+# Dataset (too large)
+data/PlantVillage/

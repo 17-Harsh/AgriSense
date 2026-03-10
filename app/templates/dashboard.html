@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AgriSense{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1 class="page-header__title">Analytics Dashboard</h1>
+    <p class="page-header__desc">Crop health trends and diagnosis statistics</p>
+</section>
+
+<section class="dashboard" id="dashboard-section">
+    <div class="dash-stats" id="dash-stats">
+        <div class="dash-stat-card">
+            <span class="dash-stat-card__icon">📊</span>
+            <div class="dash-stat-card__data">
+                <span class="dash-stat-card__value">{{ stats.total_scans }}</span>
+                <span class="dash-stat-card__label">Total Analyses</span>
+            </div>
+        </div>
+        <div class="dash-stat-card dash-stat-card--warning">
+            <span class="dash-stat-card__icon">⚠️</span>
+            <div class="dash-stat-card__data">
+                <span class="dash-stat-card__value">{{ stats.diseased }}</span>
+                <span class="dash-stat-card__label">Diseases Found</span>
+            </div>
+        </div>
+        <div class="dash-stat-card dash-stat-card--success">
+            <span class="dash-stat-card__icon">✅</span>
+            <div class="dash-stat-card__data">
+                <span class="dash-stat-card__value">{{ stats.healthy }}</span>
+                <span class="dash-stat-card__label">Healthy Samples</span>
+            </div>
+        </div>
+        <div class="dash-stat-card">
+            <span class="dash-stat-card__icon">🎯</span>
+            <div class="dash-stat-card__data">
+                <span class="dash-stat-card__value">{{ stats.avg_confidence }}%</span>
+                <span class="dash-stat-card__label">Avg Confidence</span>
+            </div>
+        </div>
+    </div>
+
+    {% if stats.total_scans > 0 %}
+    <div class="dash-charts" id="dash-charts">
+        <div class="chart-card" id="crop-chart-card">
+            <h3 class="chart-card__title">Crop Distribution</h3>
+            <div class="chart-card__body">
+                <canvas id="cropChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card" id="severity-chart-card">
+            <h3 class="chart-card__title">Severity Breakdown</h3>
+            <div class="chart-card__body">
+                <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card chart-card--wide" id="trend-chart-card">
+            <h3 class="chart-card__title">Monthly Trend</h3>
+            <div class="chart-card__body">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card chart-card--wide" id="disease-chart-card">
+            <h3 class="chart-card__title">Most Common Diseases</h3>
+            <div class="chart-card__body">
+                <canvas id="diseaseChart"></canvas>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state__icon">📈</div>
+        <h3 class="empty-state__title">No data to display</h3>
+        <p class="empty-state__desc">Perform your first diagnosis to start seeing analytics.</p>
+        <a href="{{ url_for('diagnose') }}" class="btn btn--primary">Start Diagnosis</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if stats.total_scans > 0 %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const cropData = {{ crop_data| safe
+    }};
+    const severityData = {{ severity_data| safe }};
+    const monthlyData = {{ monthly_data| safe }};
+    const diseaseFrequency = {{ disease_frequency| safe }};
+
+    const palette = {
+        green: 'hsl(152, 55%, 48%)',
+        amber: 'hsl(38, 92%, 55%)',
+        red: 'hsl(4, 72%, 56%)',
+        blue: 'hsl(215, 60%, 52%)',
+        purple: 'hsl(260, 50%, 58%)',
+        teal: 'hsl(180, 50%, 45%)',
+        orange: 'hsl(25, 85%, 55%)',
+        slate: 'hsl(215, 15%, 55%)',
+    };
+    const chartColors = Object.values(palette);
+
+    Chart.defaults.color = '#8b8b9e';
+    Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+    Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+    // Crop distribution — doughnut
+    if (cropData.labels.length) {
+        new Chart(document.getElementById('cropChart'), {
+            type: 'doughnut',
+            data: {
+                labels: cropData.labels,
+                datasets: [{
+                    data: cropData.data,
+                    backgroundColor: chartColors.slice(0, cropData.labels.length),
+                    borderWidth: 0,
+                    hoverOffset: 8,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: { legend: { position: 'bottom', labels: { padding: 16 } } },
+            },
+        });
+    }
+
+    // Severity — pie
+    if (severityData.labels.length) {
+        const sevColors = severityData.labels.map(l => {
+            const low = l.toLowerCase();
+            if (low === 'none') return palette.green;
+            if (low === 'moderate') return palette.amber;
+            if (low === 'high') return palette.orange;
+            if (low === 'critical') return palette.red;
+            return palette.slate;
+        });
+        new Chart(document.getElementById('severityChart'), {
+            type: 'pie',
+            data: {
+                labels: severityData.labels,
+                datasets: [{
+                    data: severityData.data,
+                    backgroundColor: sevColors,
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { padding: 16 } } },
+            },
+        });
+    }
+
+    // Monthly trend — line
+    if (monthlyData.labels.length) {
+        new Chart(document.getElementById('trendChart'), {
+            type: 'line',
+            data: {
+                labels: monthlyData.labels,
+                datasets: [{
+                    label: 'Diagnoses',
+                    data: monthlyData.data,
+                    borderColor: palette.green,
+                    backgroundColor: 'rgba(44, 182, 125, 0.12)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                    borderWidth: 2.5,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+
+    // Disease frequency — horizontal bar
+    if (diseaseFrequency.labels.length) {
+        new Chart(document.getElementById('diseaseChart'), {
+            type: 'bar',
+            data: {
+                labels: diseaseFrequency.labels,
+                datasets: [{
+                    label: 'Occurrences',
+                    data: diseaseFrequency.data,
+                    backgroundColor: chartColors.slice(0, diseaseFrequency.labels.length),
+                    borderRadius: 6,
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

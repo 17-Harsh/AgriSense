@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Diagnosis Result — AgriSense{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1 class="page-header__title">Diagnosis Report</h1>
+    <p class="page-header__desc">Analysis completed · Report #{{ record_id }}</p>
+</section>
+
+<section class="result-section" id="result-section">
+    <div class="result-layout">
+        <!-- Left: Image + Confidence -->
+        <div class="result-image-panel">
+            <div class="result-image-wrap">
+                <img src="{{ url_for('static', filename='uploads/' + image_filename) }}" alt="Analyzed leaf image"
+                    class="result-image" id="result-image">
+            </div>
+
+            <div class="confidence-panel" id="confidence-panel">
+                <h3>Confidence Breakdown</h3>
+                <div class="confidence-list">
+                    {% for pred in result.top_predictions %}
+                    <div class="confidence-item">
+                        <div class="confidence-item__header">
+                            <span class="confidence-item__name">{{ pred.crop }} — {{ pred.disease }}</span>
+                            <span class="confidence-item__pct">{{ "%.1f"|format(pred.confidence * 100) }}%</span>
+                        </div>
+                        <div class="confidence-bar">
+                            <div class="confidence-bar__fill {% if loop.first %}confidence-bar__fill--primary{% endif %}"
+                                style="width: {{ pred.confidence * 100 }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Disease Info -->
+        <div class="result-info-panel">
+            <div class="result-verdict {% if result.is_healthy %}result-verdict--healthy{% else %}result-verdict--diseased{% endif %}"
+                id="result-verdict">
+                <div class="result-verdict__badge">
+                    {% if result.is_healthy %}
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    {% else %}
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    {% endif %}
+                </div>
+                <div class="result-verdict__text">
+                    <span class="result-verdict__crop">{{ disease_info.get('crop', result.crop) }}</span>
+                    <h2 class="result-verdict__disease">{{ disease_info.get('disease', result.disease) }}</h2>
+                </div>
+                {% if not result.is_healthy %}
+                <span class="severity-badge severity-badge--{{ disease_info.get('severity', 'Unknown')|lower }}"
+                    id="severity-badge">
+                    {{ disease_info.get('severity', 'Unknown') }} Severity
+                </span>
+                {% endif %}
+            </div>
+
+            {% if disease_info.get('pathogen') and disease_info.get('pathogen') != 'N/A' %}
+            <div class="info-block" id="pathogen-block">
+                <h3 class="info-block__title">Pathogen</h3>
+                <p class="info-block__text info-block__text--mono">{{ disease_info.get('pathogen') }}</p>
+            </div>
+            {% endif %}
+
+            <div class="info-block" id="description-block">
+                <h3 class="info-block__title">About this condition</h3>
+                <p class="info-block__text">{{ disease_info.get('description', 'No description available.') }}</p>
+            </div>
+
+            {% if disease_info.get('symptoms') %}
+            <div class="info-block" id="symptoms-block">
+                <h3 class="info-block__title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    Symptoms
+                </h3>
+                <ul class="info-list">
+                    {% for symptom in disease_info.symptoms %}
+                    <li>{{ symptom }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if disease_info.get('treatment') %}
+            <div class="info-block info-block--treatment" id="treatment-block">
+                <h3 class="info-block__title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    </svg>
+                    Recommended Treatment
+                </h3>
+                <ol class="info-list info-list--ordered">
+                    {% for step in disease_info.treatment %}
+                    <li>{{ step }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+
+            {% if disease_info.get('prevention') %}
+            <div class="info-block info-block--prevention" id="prevention-block">
+                <h3 class="info-block__title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    Prevention Strategies
+                </h3>
+                <ul class="info-list">
+                    {% for tip in disease_info.prevention %}
+                    <li>{{ tip }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if disease_info.get('fertilizer') %}
+            <div class="info-block info-block--fertilizer" id="fertilizer-block">
+                <h3 class="info-block__title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5" />
+                        <path d="M8.5 8.5v.01" />
+                        <path d="M16 15.5v.01" />
+                        <path d="M12 12v.01" />
+                        <path d="M11 17v.01" />
+                        <path d="M7 14v.01" />
+                    </svg>
+                    Fertilizer Recommendation
+                </h3>
+                <p class="info-block__text">{{ disease_info.get('fertilizer') }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="result-actions" id="result-actions">
+        <a href="{{ url_for('diagnose') }}" class="btn btn--primary" id="new-diagnosis-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            New Diagnosis
+        </a>
+        <a href="{{ url_for('history') }}" class="btn btn--ghost" id="view-history-btn">View History</a>
+        <button class="btn btn--ghost" id="print-report-btn" onclick="window.print()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 6 2 18 2 18 9" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Print Report
+        </button>
+    </div>
+</section>
+{% endblock %}

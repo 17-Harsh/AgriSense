@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Diagnose — AgriSense{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1 class="page-header__title">Crop Disease Diagnosis</h1>
+    <p class="page-header__desc">Upload a clear photo of a crop leaf to detect potential diseases</p>
+</section>
+
+<section class="diagnose-section" id="diagnose-section">
+    <form method="POST" enctype="multipart/form-data" class="upload-form" id="upload-form">
+        <div class="upload-zone" id="upload-zone">
+            <input type="file" name="leaf_image" id="leaf-image-input" accept="image/*" class="upload-zone__input">
+            <div class="upload-zone__content" id="upload-zone-content">
+                <div class="upload-zone__icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                </div>
+                <p class="upload-zone__title">Drop your leaf image here</p>
+                <p class="upload-zone__hint">or click to browse · JPG, PNG, WebP up to 16MB</p>
+            </div>
+            <div class="upload-zone__preview" id="upload-preview" style="display:none">
+                <img id="preview-image" src="" alt="Preview">
+                <button type="button" class="upload-zone__remove" id="remove-preview"
+                    aria-label="Remove image">&times;</button>
+            </div>
+        </div>
+
+        <div class="upload-tips">
+            <h3>Tips for best results</h3>
+            <ul>
+                <li>Use a <strong>single leaf</strong> that clearly shows symptoms</li>
+                <li>Photograph in <strong>natural daylight</strong> — avoid harsh shadows</li>
+                <li>Capture both <strong>top and bottom</strong> of the leaf if possible</li>
+                <li>Keep the leaf <strong>centered</strong> and in focus</li>
+            </ul>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--lg upload-submit" id="submit-diagnosis" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+            </svg>
+            Analyze Leaf
+        </button>
+    </form>
+</section>
+
+<section class="how-it-works" id="how-it-works">
+    <h2 class="section-title">How it works</h2>
+    <div class="steps-row">
+        <div class="step-item">
+            <div class="step-item__num">1</div>
+            <h4>Upload</h4>
+            <p>Take or upload a photo of the affected crop leaf</p>
+        </div>
+        <div class="step-item__arrow">→</div>
+        <div class="step-item">
+            <div class="step-item__num">2</div>
+            <h4>Analyze</h4>
+            <p>Our CNN model processes the image through EfficientNet-B0</p>
+        </div>
+        <div class="step-item__arrow">→</div>
+        <div class="step-item">
+            <div class="step-item__num">3</div>
+            <h4>Results</h4>
+            <p>Get disease identification, treatment plan, and prevention tips</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const zone = document.getElementById('upload-zone');
+        const input = document.getElementById('leaf-image-input');
+        const content = document.getElementById('upload-zone-content');
+        const previewContainer = document.getElementById('upload-preview');
+        const previewImg = document.getElementById('preview-image');
+        const removeBtn = document.getElementById('remove-preview');
+        const submitBtn = document.getElementById('submit-diagnosis');
+
+        // Drag and drop
+        zone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            zone.classList.add('upload-zone--dragover');
+        });
+
+        zone.addEventListener('dragleave', function (e) {
+            e.preventDefault();
+            zone.classList.remove('upload-zone--dragover');
+        });
+
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            zone.classList.remove('upload-zone--dragover');
+            if (e.dataTransfer.files.length) {
+                input.files = e.dataTransfer.files;
+                showPreview(e.dataTransfer.files[0]);
+            }
+        });
+
+        // File selection
+        input.addEventListener('change', function () {
+            if (this.files.length) {
+                showPreview(this.files[0]);
+            }
+        });
+
+        // Remove preview
+        removeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            input.value = '';
+            hidePreview();
+        });
+
+        function showPreview(file) {
+            if (!file.type.startsWith('image/')) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                previewImg.src = e.target.result;
+                content.style.display = 'none';
+                previewContainer.style.display = 'flex';
+                submitBtn.disabled = false;
+                submitBtn.classList.add('btn--ready');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function hidePreview() {
+            content.style.display = 'flex';
+            previewContainer.style.display = 'none';
+            previewImg.src = '';
+            submitBtn.disabled = true;
+            submitBtn.classList.remove('btn--ready');
+        }
+
+        // Submit loading state
+        document.getElementById('upload-form').addEventListener('submit', function () {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+        });
+    });
+</script>
+{% endblock %}
