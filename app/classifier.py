@@ -48,7 +48,23 @@ class CropDiseaseClassifier:
 
     def _build_model(self, num_classes):
         """Build EfficientNet-B0 model with custom classification head."""
-        model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        try:
+            model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+            print("[AgriSense] Loaded EfficientNet-B0 with ImageNet weights")
+        except RuntimeError:
+            # Hash mismatch — clear bad cache and try without hash check
+            print("[AgriSense] Hash mismatch on cached model, retrying...")
+            import glob
+            import torch.hub
+            cache_dir = torch.hub.get_dir()
+            for f in glob.glob(os.path.join(cache_dir, 'checkpoints', 'efficientnet_b0*')):
+                os.remove(f)
+            try:
+                model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+                print("[AgriSense] Loaded EfficientNet-B0 with ImageNet weights (retry)")
+            except Exception:
+                print("[AgriSense] Could not load pretrained weights, using random init")
+                model = models.efficientnet_b0(weights=None)
 
         # Freeze early layers for transfer learning
         for param in model.features[:6].parameters():
