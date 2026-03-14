@@ -353,6 +353,11 @@ def main():
             torch.save(checkpoint, model_path)
             print(f'  ★ Saved best model (accuracy: {best_acc:.2f}%)')
 
+        # Save history after every epoch (so it persists if training is interrupted)
+        history_path = os.path.join(args.output_dir, 'training_history.json')
+        with open(history_path, 'w') as f:
+            json.dump(history, f, indent=2)
+
         print()
 
     # Save training history
