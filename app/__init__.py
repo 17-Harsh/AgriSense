@@ -25,6 +25,26 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ─────────────── Database Model ───────────────
+# Defined BEFORE create_app so db.create_all() can find it
+
+class DiagnosisRecord(db.Model):
+    __tablename__ = 'diagnosis_records'
+
+    id = db.Column(db.Integer, primary_key=True)
+    image_filename = db.Column(db.String(255), nullable=False)
+    crop = db.Column(db.String(100), nullable=False)
+    disease = db.Column(db.String(200), nullable=False)
+    confidence = db.Column(db.Float, nullable=False)
+    severity = db.Column(db.String(50), default='Unknown')
+    is_healthy = db.Column(db.Boolean, default=False)
+    class_key = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Diagnosis {self.crop}: {self.disease} ({self.confidence:.0%})>'
+
+
 def create_app():
     app = Flask(__name__, template_folder='templates', static_folder='static')
     app.config.from_object(Config)
@@ -85,13 +105,18 @@ def create_app():
                 # Get disease information
                 disease_info = DISEASE_INFO.get(result['class_key'], {})
 
+                # Determine severity
+                severity = disease_info.get('severity', 'Unknown')
+                if result['is_healthy']:
+                    severity = 'None'
+
                 # Save to database
                 record = DiagnosisRecord(
                     image_filename=filename,
                     crop=result['crop'],
                     disease=disease_info.get('disease', result['disease']),
                     confidence=result['confidence'],
-                    severity=disease_info.get('severity', 'Unknown'),
+                    severity=severity,
                     is_healthy=result['is_healthy'],
                     class_key=result['class_key'],
                 )
@@ -249,22 +274,3 @@ def create_app():
         }
 
     return app
-
-
-# ─────────────── Database Model ───────────────
-
-class DiagnosisRecord(db.Model):
-    __tablename__ = 'diagnosis_records'
-
-    id = db.Column(db.Integer, primary_key=True)
-    image_filename = db.Column(db.String(255), nullable=False)
-    crop = db.Column(db.String(100), nullable=False)
-    disease = db.Column(db.String(200), nullable=False)
-    confidence = db.Column(db.Float, nullable=False)
-    severity = db.Column(db.String(50), default='Unknown')
-    is_healthy = db.Column(db.Boolean, default=False)
-    class_key = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f'<Diagnosis {self.crop}: {self.disease} ({self.confidence:.0%})>'
