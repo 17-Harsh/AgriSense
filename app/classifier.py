@@ -113,6 +113,25 @@ class CropDiseaseClassifier:
             print(f"[AgriSense] Error loading weights: {e}")
             print("[AgriSense] Using pre-trained ImageNet weights")
 
+    def _is_valid_leaf(self, image):
+        """Check if image has sufficient plant-like color representation."""
+        import matplotlib.colors as mcolors
+        img_thumb = image.copy()
+        img_thumb.thumbnail((150, 150))
+        img_np = np.array(img_thumb) / 255.0
+        hsv = mcolors.rgb_to_hsv(img_np)
+        
+        hue = hsv[:,:,0] * 360
+        sat = hsv[:,:,1]
+        val = hsv[:,:,2]
+        
+        # Greens, yellows, browns: hues approx 15 to 165
+        # Ignore dark pixels or grey pixels
+        valid = ((hue >= 15) & (hue <= 165) & (sat >= 0.15) & (val >= 0.15))
+        ratio = np.sum(valid) / valid.size
+        
+        return ratio >= 0.40 # At least 40% plant pixels
+
     def predict(self, image_path, top_k=3):
         """
         Predict disease from a leaf image.
@@ -126,6 +145,10 @@ class CropDiseaseClassifier:
             confidence, and top-k alternatives
         """
         image = Image.open(image_path).convert('RGB')
+        
+        if not self._is_valid_leaf(image):
+            raise ValueError("The uploaded image does not appear to be a crop leaf. Please upload a clear leaf image.")
+
         input_tensor = self.transform(image).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
