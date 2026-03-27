@@ -2,6 +2,9 @@
 AgriSense — Crop Disease Classifier
 Uses EfficientNet-B0 with transfer learning for crop disease classification.
 Supports 32 disease classes across 7 major crops.
+
+Includes an ImageNet-based gatekeeper to reject non-leaf images (stones, forests, etc.)
+before the disease model runs.
 """
 
 import os
@@ -19,6 +22,39 @@ class CropDiseaseClassifier:
     IMAGENET_MEAN = [0.485, 0.456, 0.406]
     IMAGENET_STD = [0.229, 0.224, 0.225]
     INPUT_SIZE = 224
+
+    # ── Plant-related ImageNet category keywords ──
+    # If ANY of the ImageNet top-20 predictions contains these keywords,
+    # the image is considered to potentially contain plant material.
+    # This is intentionally comprehensive and permissive for valid leaves.
+    PLANT_KEYWORDS = [
+        # Vegetables
+        'cabbage', 'broccoli', 'cauliflower', 'zucchini', 'squash',
+        'cucumber', 'artichoke', 'pepper', 'cardoon', 'mushroom',
+        'pumpkin', 'turnip',
+        # Fruits
+        'apple', 'granny_smith', 'strawberry', 'orange', 'lemon',
+        'fig', 'pineapple', 'banana', 'jackfruit', 'custard_apple',
+        'pomegranate',
+        # Crops & agricultural
+        'hay', 'rapeseed', 'corn', 'ear',  # ear of corn
+        'acorn', 'hip', 'buckeye',  # seeds/nuts
+        # Flowers
+        'daisy', 'sunflower', 'rose', 'tulip', 'orchid', 'poppy',
+        'lady_slipper', "yellow_lady",
+        # Fungi (relevant since diseases involve fungi)
+        'fungus', 'agaric', 'gyromitra', 'stinkhorn', 'earthstar',
+        'bolete', 'coral_fungus', 'hen-of-the-woods',
+        # Plant-related objects & textures
+        'pot', 'flower_pot', 'vase',
+        'leaf', 'plant', 'herb', 'vine', 'fern', 'moss',
+        'seed', 'sprout', 'blossom', 'petal',
+        # Insects commonly found ON leaves (ImageNet classifies leaf
+        # close-ups as these because the leaf dominates the image)
+        'leaf_beetle', 'beetle', 'leafhopper',
+        # Broader nature keywords (close-up plant material)
+        'tobacco', 'cocoa', 'coffee',
+    ]
 
     def __init__(self, model_path, class_names, device=None):
         """
@@ -45,6 +81,9 @@ class CropDiseaseClassifier:
 
         self.model.eval()
         self.model.to(self.device)
+
+        # Initialize the ImageNet-based leaf gatekeeper
+        self._init_gatekeeper()
 
     def _build_model(self, num_classes):
         """Build EfficientNet-B0 model with custom classification head."""
@@ -113,24 +152,74 @@ class CropDiseaseClassifier:
             print(f"[AgriSense] Error loading weights: {e}")
             print("[AgriSense] Using pre-trained ImageNet weights")
 
+    # ─────────────── ImageNet Gatekeeper ───────────────
+
+    def _init_gatekeeper(self):
+        """
+        Initialize a SEPARATE ImageNet EfficientNet-B0 (1000 classes) as a
+        leaf/plant detector. This model answers: "Does this image contain
+        plant material?" BEFORE the disease classifier runs.
+        """
+        try:
+            weights = models.EfficientNet_B0_Weights.DEFAULT
+            self._gatekeeper = models.efficientnet_b0(weights=weights)
+            self._gatekeeper.eval()
+            self._gatekeeper.to(self.device)
+            self._imagenet_categories = weights.meta["categories"]
+            self._gatekeeper_ready = True
+            print("[AgriSense] Leaf gatekeeper initialized (ImageNet OOD detection)")
+        except Exception as e:
+            print(f"[AgriSense] WARNING: Leaf gatekeeper failed to load: {e}")
+            print("[AgriSense] OOD detection disabled — all images will be processed")
+            self._gatekeeper_ready = False
+
+    def _is_plant_category(self, category_name):
+        """Check if an ImageNet category name matches any plant-related keyword."""
+        cat = category_name.lower().replace(' ', '_').replace("'", '')
+        for keyword in self.PLANT_KEYWORDS:
+            if keyword.lower() in cat:
+                return True
+        return False
+
     def _is_valid_leaf(self, image):
-        """Check if image has sufficient plant-like color representation."""
-        import matplotlib.colors as mcolors
-        img_thumb = image.copy()
-        img_thumb.thumbnail((150, 150))
-        img_np = np.array(img_thumb) / 255.0
-        hsv = mcolors.rgb_to_hsv(img_np)
-        
-        hue = hsv[:,:,0] * 360
-        sat = hsv[:,:,1]
-        val = hsv[:,:,2]
-        
-        # Greens, yellows, browns: hues approx 15 to 165
-        # Ignore dark pixels or grey pixels
-        valid = ((hue >= 15) & (hue <= 165) & (sat >= 0.15) & (val >= 0.15))
-        ratio = np.sum(valid) / valid.size
-        
-        return ratio >= 0.40 # At least 40% plant pixels
+        """
+        Validate that the image contains plant/leaf material using the
+        ImageNet gatekeeper model.
+
+        Runs the full 1000-class ImageNet EfficientNet-B0. If ANY of the
+        top-20 predictions is a plant-related category (cumulative probability
+        >= 2%), the image is accepted. Otherwise it is rejected.
+
+        This reliably catches:
+        - Stones/rocks → ImageNet says "alp", "cliff", "volcano" → rejected
+        - Forests/landscapes → ImageNet says "valley", "lakeside" → rejected
+        - Random objects → ImageNet says "window screen", etc. → rejected
+        - Valid crop leaves → ImageNet says "leaf beetle", "lady's slipper" → accepted
+        """
+        if not self._gatekeeper_ready:
+            return True  # Skip if gatekeeper not available
+
+        input_tensor = self.transform(image).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            outputs = self._gatekeeper(input_tensor)
+            probs = torch.nn.functional.softmax(outputs, dim=1)
+
+        # Check top-20 predictions for any plant-related category
+        top_probs, top_indices = torch.topk(probs, 20)
+        top_probs = top_probs.squeeze().cpu().numpy()
+        top_indices = top_indices.squeeze().cpu().numpy()
+
+        plant_score = 0.0
+        for i in range(len(top_indices)):
+            category = self._imagenet_categories[top_indices[i]]
+            if self._is_plant_category(category):
+                plant_score += float(top_probs[i])
+
+        # Accept if at least 2% cumulative probability for plant categories
+        return plant_score >= 0.02
+
+    # ─────────────── Prediction ───────────────
 
     def predict(self, image_path, top_k=3):
         """
@@ -143,11 +232,17 @@ class CropDiseaseClassifier:
         Returns:
             dict with prediction results including class name,
             confidence, and top-k alternatives
+
+        Raises:
+            ValueError: If image does not appear to contain a plant/leaf
         """
         image = Image.open(image_path).convert('RGB')
-        
+
         if not self._is_valid_leaf(image):
-            raise ValueError("The uploaded image does not appear to be a crop leaf. Please upload a clear leaf image.")
+            raise ValueError(
+                "This image does not appear to contain a crop leaf. "
+                "Please upload a clear, close-up photo of a plant leaf for diagnosis."
+            )
 
         input_tensor = self.transform(image).unsqueeze(0).to(self.device)
 
@@ -208,4 +303,6 @@ class CropDiseaseClassifier:
             'input_size': f'{self.INPUT_SIZE}x{self.INPUT_SIZE}',
             'num_classes': len(self.class_names),
             'device': str(self.device),
+            'ood_detection': 'ImageNet Gatekeeper (1000-class)',
         }
+

@@ -95,16 +95,15 @@ def create_app():
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
 
-                # Run prediction
+                # Run prediction (gatekeeper validates image before inference)
                 try:
                     result = classifier.predict(filepath, top_k=3)
+                except ValueError as e:
+                    # Gatekeeper rejected: not a leaf image
+                    flash(str(e), 'warning')
+                    return redirect(request.url)
                 except Exception as e:
                     flash(f'Error analyzing image: {str(e)}', 'error')
-                    return redirect(request.url)
-
-                # Check if confidence is too low (e.g., might not be a leaf)
-                if result['confidence'] < 0.85:
-                    flash(f"Analysis rejected: Image recognition confidence is too low ({result['confidence']*100:.1f}%). Please upload a clear image of a crop leaf.", 'error')
                     return redirect(request.url)
 
                 # Get disease information
@@ -191,13 +190,6 @@ def create_app():
 
         try:
             result = classifier.predict(filepath, top_k=3)
-
-            # Check if confidence is too low (e.g., might not be a leaf)
-            if result['confidence'] < 0.85:
-                return jsonify({
-                    'error': f"Prediction confidence is too low ({result['confidence']*100:.1f}%). Please upload a clear image of a crop leaf."
-                }), 400
-
             disease_info = DISEASE_INFO.get(result['class_key'], {})
 
             return jsonify({
@@ -213,6 +205,9 @@ def create_app():
                 },
                 'alternatives': result['top_predictions'],
             })
+        except ValueError as e:
+            # Gatekeeper rejected: not a leaf image
+            return jsonify({'error': str(e)}), 400
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
